@@ -45,14 +45,6 @@ Signals (something feels off):
 - Questions already answered earlier in the conversation
 - Tasks the user explicitly scoped to you alone
 - Reads, searches, exploration (orient first, then decide)
-- **Changes where no trigger above LITERALLY fires.** Read each by number; if none match the change in front of you, proceed.
-
-## Near-misses — do NOT escalate for these
-
-- Exactly 3 files in one package = **below** trigger 5 ("more than 3 OR crosses packages"). Proceed.
-- Adding a routine column with a default to a non-shared schema = not trigger 7. Proceed.
-- First occurrence of a test failure = trigger 1 requires the **same** error **twice**. Proceed and try a fix.
-- Vague phrasing in YOUR head ≠ trigger 10. Trigger 10 is the user's requirement being ambiguous, not your uncertainty.
 
 ## Escalation Message Format
 
