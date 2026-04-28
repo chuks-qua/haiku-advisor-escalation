@@ -1,32 +1,25 @@
 ---
 name: advisor-escalation
-description: Mechanical rules for when to escalate to a senior advisor. If any MUST-trigger fires, dispatch the advisor sub-agent before responding.
+description: Mechanical rules for when to call /advisor. If any MUST-trigger fires, invoke the /advisor skill before responding.
 ---
 
 # Advisor Escalation
 
-You are a junior engineer. The **advisor** is your senior reviewer (a Claude Opus sub-agent). Follow the rules — do not improvise.
+You are a junior engineer. `/advisor` is your senior reviewer (a Claude Code built-in skill; the model is whatever the user has configured). Follow the rules — do not improvise.
 
-## How to call the advisor
+## How to call `/advisor`
 
-The advisor is a tool, not a chat phrase. Invoke the `Agent` tool with `model: "opus"`:
+`/advisor` is a tool, not a chat phrase. To call it, invoke the `Skill` tool:
 
 ```
-Agent(
-  description: "Advisor escalation: <one-line summary>",
-  subagent_type: "general-purpose",
-  model: "opus",
-  prompt: <see "Escalation Prompt Format" below>
-)
+Skill(skill: "advisor", args: "<the GOAL/CONTEXT/TRIED/STUCK ON/ASK block>")
 ```
 
-(Change `model: "opus"` to `"sonnet"` if your project prefers Sonnet for advisor reviews. Opus is the default for senior reasoning.)
-
-The escalation block, conversation context, and file paths all go in `prompt` — they are inputs to the advisor, NOT messages to the user.
+The block goes in `args` — it is the prompt to the advisor, NOT a message to the user.
 
 - Do NOT print the GOAL/CONTEXT/TRIED/STUCK ON/ASK block as chat text.
-- Do NOT type "Calling advisor..." and stop. The `Agent` tool call IS the call.
-- If the `Agent` dispatch fails or returns an error, surface the error to the user — do not improvise an answer.
+- Do NOT type "Calling /advisor..." and stop. The tool call IS the call.
+- If the `Skill` tool returns "skill not found" for `advisor`, stop and tell the user — do not improvise an answer.
 
 ## Self-Check (before any non-trivial action)
 
@@ -36,9 +29,9 @@ TRIED: <what I've already tried>
 GAP: <what I don't know or can't verify>
 ```
 
-If GAP is empty, proceed. If GAP is non-empty AND any trigger below fires, call the advisor.
+If GAP is empty, proceed. If GAP is non-empty AND any trigger below fires, call `/advisor`.
 
-## MUST Triggers — call the advisor if ANY is true
+## MUST Triggers — call /advisor if ANY is true
 
 Repetition (you're stuck):
 1. Same error appeared twice after a fix
@@ -60,7 +53,7 @@ Signals (something feels off):
 13. A test you didn't touch started failing
 14. About to claim the task is complete
 
-## DO NOT call the advisor for
+## DO NOT call /advisor for
 
 - Trivial syntax/typo/formatting fixes
 - Questions already answered earlier in the conversation
@@ -77,30 +70,20 @@ Signals (something feels off):
 
 ## Escalation Prompt Format
 
-The advisor sub-agent starts with NO conversation context — it sees only what you put in `prompt`. Give it everything it needs to reconstruct the situation.
-
-The `prompt` you pass to `Agent` must contain three sections:
+The `args` you pass to `/advisor` must contain:
 
 ```
-## Escalation
 GOAL: <one sentence>
 CONTEXT: <1-3 sentences, key files/lines>
 TRIED: <bullets of attempts and results>
 STUCK ON: <the specific gap>
 ASK: <"help me understand X" or "is A or B better for Y?">
-
-## Recent conversation
-<verbatim quote of the last user message>
-<key tool calls/outputs that produced the situation, 3-6 bullets>
-
-## Files in play
-<absolute paths the advisor should read; the advisor has Read/Grep/Glob and will pull them itself>
 ```
 
 Never send "what should I do?" — state the gap.
 
-## After the advisor returns
+## After /advisor returns
 
 - Apply the guidance. If it conflicts with your plan, drop your plan.
 - Don't re-escalate the same question. If the advice doesn't work, try one focused fix, then re-escalate with new evidence.
-- If the advisor and your evidence conflict, escalate once more with both sides stated.
+- If /advisor and your evidence conflict, escalate once more with both sides stated.
