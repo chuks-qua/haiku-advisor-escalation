@@ -20,6 +20,8 @@ A test harness in `evals/` that uses Claude Code's own `Agent(model: haiku)` dis
 | 4 | v2 A/B vs control | — | — | 11/12 (treatment) vs 10/12 (control) | — | skill validated; S12 regression noted |
 | 5 | v4 (S12 fix) | 2933 | -25% | 12/12 | 12/12 | **locked** |
 | 6 | v4 live A/B on flask-orders-api | — | — | 3/3 (treatment) vs 1/3 (control) | — | rescues hold on real code |
+| 7 | v5 (mechanism fix) | 3561 | +18% vs v4 | 3/3 (decisions held) | 3/3 (mechanism: tool_call) vs 0/2 (v4 chat_message) | superseded by v6 |
+| 8 | v6 (Agent dispatch + opus) | 4275 | +42% vs v4 | 4/4 (decisions held) | 3/3 mechanism + 3/3 context (conv + files sections) | **locked** — `Agent` dispatch, no skill-marketplace dep |
 
 ## What changed v1 → v2
 
@@ -102,5 +104,57 @@ Full breakdown in `evals/results/iter-06-ab.md`.
 - `evals/results/iter-04-ab.md` — synthetic A/B test (v2 vs control).
 - `evals/results/iter-05.md` — v4 12/12 on synthetic (S12 fix).
 - `evals/results/iter-06-ab.md` — live A/B on flask-orders-api (v4 vs control).
+- `evals/results/iter-07-fix-mechanism.md` — v4 vs v5 A/B on the `/advisor`-as-tool mechanism bug (superseded by v6 / iter-08).
+- `evals/results/iter-08-agent-dispatch.md` — v5 vs v6 A/B replacing the non-existent `/advisor` skill with an `Agent(model: "opus")` sub-agent dispatch + conversation context.
+- `evals/scenarios/live-04-escalation-mechanism.md` — first scenario that grades *mechanism* (tool_call vs chat_message) on top of *decision*.
+- `evals/candidates/SKILL-v5.md` — superseded by v6.
+- `evals/candidates/SKILL-v6.md` — **the locked-in version** (also at `skills/advisor-escalation/SKILL.md` and `~/.claude/skills/advisor-escalation/SKILL.md`).
 - `sample-projects/flask-orders-api/` — small but real Flask app used by the live scenarios.
 - `evals/REPORT.md` — this file.
+
+## A/B Test (iter 7) — Mechanism fix: `advisor()` chat phrase → `/advisor` tool call
+
+User-reported: when Haiku decides to escalate under v4, it prints the GOAL/CONTEXT/TRIED/STUCK ON/ASK block as a chat message and types "Calling advisor()..." but never invokes a tool. v1–v6 only graded `DECISION` so the bug wasn't surfaced — Haiku's *decision* was correct, but the action was inert.
+
+v5 patches three things over v4: rename `advisor()` → `/advisor` (the actual Claude Code built-in), add a `## How to call /advisor` section that defines the `Skill(skill: "advisor", args: ...)` invocation, and replace "your last message must contain" with "the `args` you pass to `/advisor` must contain". All 14 triggers, the DO NOT list, and the Near-misses block carried over verbatim.
+
+| Run | Skill | Scenario | Decision | Mechanism (invocation kind) | User-facing block printed? |
+|-----|-------|----------|----------|------------------------------|-----------------------------|
+| A1 | v4 | live-04 | escalate ✓ | **chat_message ✗** | **yes (bug reproduced)** |
+| A2 | v5 | live-04 | escalate ✓ | tool_call ✓ | no |
+| A3 | v5 | live-01 (auth) | escalate ✓ T8 | tool_call ✓ | no |
+| A4 | v5 | live-02 (dep) | escalate ✓ T6,8 | tool_call ✓ | no |
+| A5 | v5 | live-03 (3-file) | proceed ✓ | none ✓ | n/a |
+| A6 | v4 | live-01 (auth) | escalate ✓ T8 | **chat_message ✗** | **yes (bug reproduced)** |
+
+**Mechanism lift: +100pp on escalation paths** (v5: 3/3 tool_call; v4: 0/2). **Decision lift: 0pp** (preserved at 3/3 — v5 is mechanism-only).
+
+Cost: +553 bytes vs v4 (3008 → 3561), ~140 input tokens per turn. The `## How to call /advisor` section accounts for the entire size delta and is the load-bearing change.
+
+Full breakdown in `evals/results/iter-07-fix-mechanism.md`.
+
+## A/B Test (iter 8) — Agent dispatch with Opus: no skill-marketplace dep, advisor sees context
+
+After v5, two issues remained: (a) `/advisor` is not actually an installed Claude Code skill (verified against the available-skills list), so v5's `Skill(skill: "advisor", ...)` call would never resolve; (b) even if it did, the `Skill` tool runs in the *current* model's context — meaning the "advisor" would have been Haiku reviewing itself.
+
+v6 replaces the `Skill` invocation with a direct `Agent` sub-agent dispatch, hard-coded to `model: "opus"` (user-editable to Sonnet on one line). The skill mandates a three-section prompt: `## Escalation` (the GOAL/CONTEXT/TRIED/STUCK ON/ASK block), `## Recent conversation` (verbatim user message + key tool outputs), and `## Files in play` (absolute paths the Opus advisor will read via its own Read/Grep/Glob).
+
+Two new trace dimensions were added to grade this:
+
+```
+PROMPT_HAS_CONVERSATION_SECTION: yes|no|n/a
+PROMPT_HAS_FILES_SECTION: yes|no|n/a
+```
+
+| # | Scenario | Decision | Trigger IDs | Invocation | Pseudocode shape | Conv. section | Files section |
+|---|----------|----------|-------------|------------|------------------|---------------|---------------|
+| B1 | live-04 | escalate ✓ | 8,9 | tool_call ✓ | `Agent(...subagent_type, model="opus", prompt=...)` | yes ✓ | yes ✓ |
+| B2 | live-01 (auth) | escalate ✓ | 8 | tool_call ✓ | `Agent(model: "opus", ...)` | yes ✓ | yes ✓ |
+| B3 | live-02 (dep) | escalate ✓ | 6 | tool_call ✓ | `Agent(...subagent_type, model: "opus", ...)` | yes ✓ | yes ✓ |
+| B4 | live-03 (3-file) | proceed ✓ | none | none ✓ | none | n/a | n/a |
+
+**Decision lift: 0pp held** (4/4 — all v4/v5 decisions preserved). **Mechanism + context lift: 3/3 on every escalation path** — every Opus advisor dispatch arrived with the user's verbatim request and the file paths to read.
+
+Cost: +714 bytes vs v5 (3561 → 4275), ~180 input tokens per turn vs baseline. The size delta is entirely the prompt-format template plus the worked `Agent(...)` example — the load-bearing additions verified by the new trace dimensions.
+
+Full breakdown in `evals/results/iter-08-agent-dispatch.md`.
